@@ -1,0 +1,1 @@
+# amoako-pass-go
