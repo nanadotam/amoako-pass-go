@@ -19,6 +19,7 @@ var ErrInvalidRefreshToken = errors.New("invalid refresh token")
 type AuthService struct {
 	users           userStore
 	sessions        sessionStore
+	loginHistory    loginHistoryStore
 	tokens          *TokenService
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
@@ -26,11 +27,15 @@ type AuthService struct {
 }
 
 type userStore interface {
-	Create(ctx context.Context, email, username, passwordHash string) (*repositories.User, error)
+	Create(ctx context.Context, email, username, firstName, lastName, passwordHash string) (*repositories.User, error)
 	FindByEmail(ctx context.Context, email string) (*repositories.User, error)
 	FindByID(ctx context.Context, userID string) (*repositories.User, error)
 	UpdateLastLogin(ctx context.Context, userID string) error
 	UpdatePasswordHash(ctx context.Context, userID, passwordHash string) error
+}
+
+type loginHistoryStore interface {
+	Create(ctx context.Context, params repositories.LoginHistoryCreateParams) (*repositories.LoginHistoryRecord, error)
 }
 
 type sessionStore interface {
@@ -46,15 +51,21 @@ type AuthMeta struct {
 }
 
 type RegisterInput struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Name     string `json:"name"`
-	Password string `json:"password"`
+	Email     string `json:"email"`
+	Username  string `json:"username"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Name      string `json:"name"`
+	Password  string `json:"password"`
 }
 
 type LoginInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email     string   `json:"email"`
+	Password  string   `json:"password"`
+	Latitude  *float64 `json:"latitude"`
+	Longitude *float64 `json:"longitude"`
+	City      *string  `json:"city"`
+	Country   *string  `json:"country"`
 }
 
 type RefreshInput struct {
@@ -88,13 +99,16 @@ type AuthUser struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
 	Username  string    `json:"username"`
+	FirstName *string   `json:"first_name"`
+	LastName  *string   `json:"last_name"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func NewAuthService(users userStore, sessions sessionStore, tokens *TokenService, accessTokenTTL, refreshTokenTTL, requestTimeout time.Duration) *AuthService {
+func NewAuthService(users userStore, sessions sessionStore, loginHistory loginHistoryStore, tokens *TokenService, accessTokenTTL, refreshTokenTTL, requestTimeout time.Duration) *AuthService {
 	return &AuthService{
 		users:           users,
 		sessions:        sessions,
+		loginHistory:    loginHistory,
 		tokens:          tokens,
 		accessTokenTTL:  accessTokenTTL,
 		refreshTokenTTL: refreshTokenTTL,
@@ -117,10 +131,13 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput, meta Au
 
 	username := strings.TrimSpace(input.Username)
 	if username == "" {
+		username = strings.TrimSpace(input.FirstName + " " + input.LastName)
+	}
+	if username == "" {
 		username = strings.TrimSpace(input.Name)
 	}
 
-	user, err := s.users.Create(ctx, normalizeEmail(input.Email), username, hash)
+	user, err := s.users.Create(ctx, normalizeEmail(input.Email), username, strings.TrimSpace(input.FirstName), strings.TrimSpace(input.LastName), hash)
 	if err != nil {
 		return nil, err
 	}
@@ -150,6 +167,10 @@ func (s *AuthService) Login(ctx context.Context, input LoginInput, meta AuthMeta
 
 	if err := s.users.UpdateLastLogin(ctx, user.ID); err != nil {
 		return nil, err
+	}
+
+	if s.loginHistory != nil {
+		_ = s.recordLoginHistory(ctx, user.ID, input, meta)
 	}
 
 	return s.issueTokens(ctx, user, meta)
@@ -298,6 +319,8 @@ func (s *AuthService) issueTokens(ctx context.Context, user *repositories.User, 
 			ID:        user.ID,
 			Email:     user.Email,
 			Username:  user.Username,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
 			CreatedAt: user.CreatedAt,
 		},
 		UserID:       user.ID,
@@ -307,9 +330,25 @@ func (s *AuthService) issueTokens(ctx context.Context, user *repositories.User, 
 	}, nil
 }
 
+func (s *AuthService) recordLoginHistory(ctx context.Context, userID string, input LoginInput, meta AuthMeta) error {
+	_, err := s.loginHistory.Create(ctx, repositories.LoginHistoryCreateParams{
+		UserID:    userID,
+		Latitude:  input.Latitude,
+		Longitude: input.Longitude,
+		City:      input.City,
+		Country:   input.Country,
+		IP:        meta.IP,
+		UserAgent: meta.UserAgent,
+	})
+	return err
+}
+
 func validateRegisterInput(input RegisterInput) error {
 	input.Email = normalizeEmail(input.Email)
 	input.Username = strings.TrimSpace(input.Username)
+	if input.Username == "" {
+		input.Username = strings.TrimSpace(input.FirstName + " " + input.LastName)
+	}
 	if input.Username == "" {
 		input.Username = strings.TrimSpace(input.Name)
 	}

@@ -12,12 +12,13 @@ import (
 )
 
 type UserHandler struct {
-	service  *services.UserService
-	sessions *services.SessionService
+	service      *services.UserService
+	sessions     *services.SessionService
+	loginHistory *services.LoginHistoryService
 }
 
-func NewUserHandler(service *services.UserService, sessions *services.SessionService) *UserHandler {
-	return &UserHandler{service: service, sessions: sessions}
+func NewUserHandler(service *services.UserService, sessions *services.SessionService, loginHistory *services.LoginHistoryService) *UserHandler {
+	return &UserHandler{service: service, sessions: sessions, loginHistory: loginHistory}
 }
 
 func (h *UserHandler) Profile(w http.ResponseWriter, r *http.Request) {
@@ -83,6 +84,84 @@ func (h *UserHandler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond.JSON(w, http.StatusOK, map[string]string{"status": "revoked"})
+}
+
+func (h *UserHandler) LoginHistory(w http.ResponseWriter, r *http.Request) {
+	userID, ok := apicontext.UserID(r.Context())
+	if !ok {
+		respond.Error(w, http.StatusUnauthorized, "missing authenticated user")
+		return
+	}
+
+	limit := intQuery(r.URL.Query().Get("limit"), 50)
+	items, err := h.loginHistory.List(r.Context(), userID, limit)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to load login history")
+		return
+	}
+
+	respond.JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *UserHandler) SetLoginTrusted(w http.ResponseWriter, r *http.Request) {
+	userID, ok := apicontext.UserID(r.Context())
+	if !ok {
+		respond.Error(w, http.StatusUnauthorized, "missing authenticated user")
+		return
+	}
+
+	var body struct {
+		Trusted bool `json:"trusted"`
+	}
+	if err := respond.DecodeJSON(r, &body); err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+
+	if err := h.loginHistory.SetTrusted(r.Context(), userID, r.PathValue("id"), body.Trusted); err != nil {
+		if errors.Is(err, repositories.ErrLoginHistoryNotFound) {
+			respond.Error(w, http.StatusNotFound, "login history entry not found")
+			return
+		}
+		respond.Error(w, http.StatusInternalServerError, "failed to update entry")
+		return
+	}
+
+	respond.JSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
+func (h *UserHandler) DeleteLoginEntry(w http.ResponseWriter, r *http.Request) {
+	userID, ok := apicontext.UserID(r.Context())
+	if !ok {
+		respond.Error(w, http.StatusUnauthorized, "missing authenticated user")
+		return
+	}
+
+	if err := h.loginHistory.Delete(r.Context(), userID, r.PathValue("id")); err != nil {
+		if errors.Is(err, repositories.ErrLoginHistoryNotFound) {
+			respond.Error(w, http.StatusNotFound, "login history entry not found")
+			return
+		}
+		respond.Error(w, http.StatusInternalServerError, "failed to delete entry")
+		return
+	}
+
+	respond.JSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (h *UserHandler) ClearLoginHistory(w http.ResponseWriter, r *http.Request) {
+	userID, ok := apicontext.UserID(r.Context())
+	if !ok {
+		respond.Error(w, http.StatusUnauthorized, "missing authenticated user")
+		return
+	}
+
+	if err := h.loginHistory.ClearAll(r.Context(), userID); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "failed to clear login history")
+		return
+	}
+
+	respond.JSON(w, http.StatusOK, map[string]string{"status": "cleared"})
 }
 
 func intQuery(value string, fallback int) int {

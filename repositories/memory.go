@@ -27,12 +27,13 @@ type memoryState struct {
 }
 
 type MemoryStores struct {
-	Users      *memUserStore
-	Sessions   *memSessionStore
-	Passwords  *memPasswordStore
-	Wifi       *memWifiStore
-	Categories *memCategoryStore
-	Audit      *memAuditStore
+	Users        *memUserStore
+	Sessions     *memSessionStore
+	Passwords    *memPasswordStore
+	Wifi         *memWifiStore
+	Categories   *memCategoryStore
+	Audit        *memAuditStore
+	LoginHistory *memLoginHistoryStore
 }
 
 type memUserStore struct {
@@ -74,16 +75,17 @@ func NewMemoryStores() *MemoryStores {
 	}
 
 	return &MemoryStores{
-		Users:      &memUserStore{state: state},
-		Sessions:   &memSessionStore{state: state},
-		Passwords:  &memPasswordStore{state: state},
-		Wifi:       &memWifiStore{state: state},
-		Categories: &memCategoryStore{state: state},
-		Audit:      &memAuditStore{state: state},
+		Users:        &memUserStore{state: state},
+		Sessions:     &memSessionStore{state: state},
+		Passwords:    &memPasswordStore{state: state},
+		Wifi:         &memWifiStore{state: state},
+		Categories:   &memCategoryStore{state: state},
+		Audit:        &memAuditStore{state: state},
+		LoginHistory: &memLoginHistoryStore{},
 	}
 }
 
-func (r *memUserStore) Create(_ context.Context, email, username, passwordHash string) (*User, error) {
+func (r *memUserStore) Create(_ context.Context, email, username, firstName, lastName, passwordHash string) (*User, error) {
 	r.state.mu.Lock()
 	defer r.state.mu.Unlock()
 
@@ -101,6 +103,8 @@ func (r *memUserStore) Create(_ context.Context, email, username, passwordHash s
 		ID:           uuid.New().String(),
 		Email:        email,
 		Username:     username,
+		FirstName:    nullableString(firstName),
+		LastName:     nullableString(lastName),
 		PasswordHash: passwordHash,
 		CreatedAt:    now,
 	}
@@ -205,6 +209,8 @@ func (r *memUserStore) Profile(_ context.Context, userID string) (*UserProfile, 
 
 	return &UserProfile{
 		ID:            user.ID,
+		FirstName:     user.FirstName,
+		LastName:      user.LastName,
 		Name:          user.Username,
 		Email:         user.Email,
 		PasswordCount: passwordCount,
@@ -747,4 +753,27 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+// memLoginHistoryStore is an in-memory no-op store used in no-DB mode.
+type memLoginHistoryStore struct{}
+
+func (r *memLoginHistoryStore) Create(_ context.Context, _ LoginHistoryCreateParams) (*LoginHistoryRecord, error) {
+	return &LoginHistoryRecord{}, nil
+}
+
+func (r *memLoginHistoryStore) ListByUser(_ context.Context, _ string, _ int) ([]LoginHistoryRecord, error) {
+	return []LoginHistoryRecord{}, nil
+}
+
+func (r *memLoginHistoryStore) SetTrusted(_ context.Context, _, _ string, _ bool) error {
+	return ErrLoginHistoryNotFound
+}
+
+func (r *memLoginHistoryStore) Delete(_ context.Context, _, _ string) error {
+	return ErrLoginHistoryNotFound
+}
+
+func (r *memLoginHistoryStore) ClearByUser(_ context.Context, _ string) error {
+	return nil
 }

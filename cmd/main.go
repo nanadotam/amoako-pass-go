@@ -32,15 +32,16 @@ func main() {
 	loginRateLimiter := services.NewRateLimiter(5, 10*time.Minute)
 
 	var (
-		authService        *services.AuthService
-		vaultService       *services.VaultService
-		categoryService    *services.CategoryService
-		wifiService        *services.WifiService
-		userService        *services.UserService
-		sessionService     *services.SessionService
-		auditService       *services.AuditService
-		maintenanceService *services.MaintenanceService
-		transferService    *services.TransferService
+		authService         *services.AuthService
+		vaultService        *services.VaultService
+		categoryService     *services.CategoryService
+		wifiService         *services.WifiService
+		userService         *services.UserService
+		sessionService      *services.SessionService
+		auditService        *services.AuditService
+		maintenanceService  *services.MaintenanceService
+		transferService     *services.TransferService
+		loginHistoryService *services.LoginHistoryService
 	)
 
 	if cfg.NoDB {
@@ -48,6 +49,7 @@ func main() {
 		authService = services.NewAuthService(
 			memStores.Users,
 			memStores.Sessions,
+			memStores.LoginHistory,
 			tokenService,
 			cfg.AccessTokenTTL,
 			cfg.RefreshTokenTTL,
@@ -58,6 +60,7 @@ func main() {
 		wifiService = services.NewWifiService(memStores.Wifi, encryptionService, cfg.RequestTimeout)
 		userService = services.NewUserService(memStores.Users, cfg.RequestTimeout)
 		sessionService = services.NewSessionService(memStores.Sessions, cfg.RequestTimeout)
+		loginHistoryService = services.NewLoginHistoryService(memStores.LoginHistory, cfg.RequestTimeout)
 		auditService = nil
 		maintenanceService = nil
 		transferService = services.NewTransferService(vaultService, wifiService, encryptionService, cfg.RequestTimeout)
@@ -68,10 +71,12 @@ func main() {
 		categoryRepository := repositories.NewCategoryRepository(db)
 		wifiRepository := repositories.NewWifiRepository(db)
 		auditRepository := repositories.NewAuditLogRepository(db)
+		loginHistoryRepository := repositories.NewLoginHistoryRepository(db)
 
 		authService = services.NewAuthService(
 			userRepository,
 			sessionRepository,
+			loginHistoryRepository,
 			tokenService,
 			cfg.AccessTokenTTL,
 			cfg.RefreshTokenTTL,
@@ -82,6 +87,7 @@ func main() {
 		wifiService = services.NewWifiService(wifiRepository, encryptionService, cfg.RequestTimeout)
 		userService = services.NewUserService(userRepository, cfg.RequestTimeout)
 		sessionService = services.NewSessionService(sessionRepository, cfg.RequestTimeout)
+		loginHistoryService = services.NewLoginHistoryService(loginHistoryRepository, cfg.RequestTimeout)
 		auditService = services.NewAuditService(auditRepository, cfg.RequestTimeout)
 		maintenanceService = services.NewMaintenanceService(passwordRepository, wifiRepository, encryptionService, cfg.RequestTimeout)
 		transferService = services.NewTransferService(vaultService, wifiService, encryptionService, cfg.RequestTimeout)
@@ -94,7 +100,7 @@ func main() {
 	vaultHandler := handlers.NewVaultHandler(vaultService, maintenanceService, transferService, auditService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	wifiHandler := handlers.NewWifiHandler(wifiService, auditService)
-	userHandler := handlers.NewUserHandler(userService, sessionService)
+	userHandler := handlers.NewUserHandler(userService, sessionService, loginHistoryService)
 	auditHandler := handlers.NewAuditHandler(auditService)
 	utilityHandler := handlers.NewUtilityHandler(hibpService)
 
@@ -143,6 +149,10 @@ func main() {
 	mux.Handle("GET /api/v1/user/profile", requireAuth(http.HandlerFunc(userHandler.Profile)))
 	mux.Handle("GET /api/v1/user/sessions", requireAuth(http.HandlerFunc(userHandler.Sessions)))
 	mux.Handle("DELETE /api/v1/user/sessions/{id}", requireAuth(http.HandlerFunc(userHandler.RevokeSession)))
+	mux.Handle("GET /api/v1/user/login-history", requireAuth(http.HandlerFunc(userHandler.LoginHistory)))
+	mux.Handle("PATCH /api/v1/user/login-history/{id}", requireAuth(http.HandlerFunc(userHandler.SetLoginTrusted)))
+	mux.Handle("DELETE /api/v1/user/login-history/{id}", requireAuth(http.HandlerFunc(userHandler.DeleteLoginEntry)))
+	mux.Handle("DELETE /api/v1/user/login-history", requireAuth(http.HandlerFunc(userHandler.ClearLoginHistory)))
 
 	mux.Handle("GET /api/v1/audit/logs", requireAuth(http.HandlerFunc(auditHandler.List)))
 	mux.Handle("POST /api/v1/util/hibp-check", requireAuth(http.HandlerFunc(utilityHandler.HIBPCheck)))

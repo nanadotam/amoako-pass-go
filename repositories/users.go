@@ -15,12 +15,16 @@ type User struct {
 	ID           string
 	Email        string
 	Username     string
+	FirstName    *string
+	LastName     *string
 	PasswordHash string
 	CreatedAt    time.Time
 }
 
 type UserProfile struct {
 	ID            string
+	FirstName     *string
+	LastName      *string
 	Name          string
 	Email         string
 	PasswordCount int
@@ -38,18 +42,23 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-func (r *UserRepository) Create(ctx context.Context, email, username, passwordHash string) (*User, error) {
+func (r *UserRepository) Create(ctx context.Context, email, username, firstName, lastName, passwordHash string) (*User, error) {
 	const query = `
-		INSERT INTO users (email, username, password_hash, created_at, updated_at)
-		VALUES ($1, $2, $3, NOW(), NOW())
-		RETURNING id, email, username, password_hash, created_at
+		INSERT INTO users (email, username, first_name, last_name, password_hash, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+		RETURNING id, email, username, first_name, last_name, password_hash, created_at
 	`
 
+	fn := nullableString(firstName)
+	ln := nullableString(lastName)
+
 	user := &User{}
-	err := r.db.QueryRowContext(ctx, query, email, username, passwordHash).Scan(
+	err := r.db.QueryRowContext(ctx, query, email, username, fn, ln, passwordHash).Scan(
 		&user.ID,
 		&user.Email,
 		&user.Username,
+		&user.FirstName,
+		&user.LastName,
 		&user.PasswordHash,
 		&user.CreatedAt,
 	)
@@ -65,7 +74,7 @@ func (r *UserRepository) Create(ctx context.Context, email, username, passwordHa
 
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*User, error) {
 	const query = `
-		SELECT id, email, username, password_hash, created_at
+		SELECT id, email, username, first_name, last_name, password_hash, created_at
 		FROM users
 		WHERE email = $1
 	`
@@ -75,6 +84,8 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*User, 
 		&user.ID,
 		&user.Email,
 		&user.Username,
+		&user.FirstName,
+		&user.LastName,
 		&user.PasswordHash,
 		&user.CreatedAt,
 	)
@@ -90,7 +101,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*User, 
 
 func (r *UserRepository) FindByID(ctx context.Context, userID string) (*User, error) {
 	const query = `
-		SELECT id, email, username, password_hash, created_at
+		SELECT id, email, username, first_name, last_name, password_hash, created_at
 		FROM users
 		WHERE id = $1
 	`
@@ -100,6 +111,8 @@ func (r *UserRepository) FindByID(ctx context.Context, userID string) (*User, er
 		&user.ID,
 		&user.Email,
 		&user.Username,
+		&user.FirstName,
+		&user.LastName,
 		&user.PasswordHash,
 		&user.CreatedAt,
 	)
@@ -143,6 +156,8 @@ func (r *UserRepository) Profile(ctx context.Context, userID string) (*UserProfi
 	const query = `
 		SELECT
 			u.id,
+			u.first_name,
+			u.last_name,
 			u.username,
 			u.email,
 			COALESCE((SELECT COUNT(*) FROM passwords p WHERE p.user_id = u.id), 0),
@@ -157,6 +172,8 @@ func (r *UserRepository) Profile(ctx context.Context, userID string) (*UserProfi
 	profile := &UserProfile{}
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(
 		&profile.ID,
+		&profile.FirstName,
+		&profile.LastName,
 		&profile.Name,
 		&profile.Email,
 		&profile.PasswordCount,
@@ -173,4 +190,11 @@ func (r *UserRepository) Profile(ctx context.Context, userID string) (*UserProfi
 	}
 
 	return profile, nil
+}
+
+func nullableString(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
