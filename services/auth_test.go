@@ -9,15 +9,15 @@ import (
 )
 
 type stubUserStore struct {
-	createFn          func(ctx context.Context, email, username, passwordHash string) (*repositories.User, error)
-	findByEmailFn     func(ctx context.Context, email string) (*repositories.User, error)
-	findByIDFn        func(ctx context.Context, userID string) (*repositories.User, error)
-	updateLastLoginFn func(ctx context.Context, userID string) error
+	createFn             func(ctx context.Context, email, username, firstName, lastName, passwordHash string) (*repositories.User, error)
+	findByEmailFn        func(ctx context.Context, email string) (*repositories.User, error)
+	findByIDFn           func(ctx context.Context, userID string) (*repositories.User, error)
+	updateLastLoginFn    func(ctx context.Context, userID string) error
 	updatePasswordHashFn func(ctx context.Context, userID, passwordHash string) error
 }
 
-func (s stubUserStore) Create(ctx context.Context, email, username, passwordHash string) (*repositories.User, error) {
-	return s.createFn(ctx, email, username, passwordHash)
+func (s stubUserStore) Create(ctx context.Context, email, username, firstName, lastName, passwordHash string) (*repositories.User, error) {
+	return s.createFn(ctx, email, username, firstName, lastName, passwordHash)
 }
 
 func (s stubUserStore) FindByEmail(ctx context.Context, email string) (*repositories.User, error) {
@@ -37,10 +37,10 @@ func (s stubUserStore) UpdatePasswordHash(ctx context.Context, userID, passwordH
 }
 
 type stubSessionStore struct {
-	createFn       func(ctx context.Context, params repositories.SessionCreateParams) (*repositories.Session, error)
-	findByTokenFn  func(ctx context.Context, token string) (*repositories.Session, error)
+	createFn        func(ctx context.Context, params repositories.SessionCreateParams) (*repositories.Session, error)
+	findByTokenFn   func(ctx context.Context, token string) (*repositories.Session, error)
 	revokeByTokenFn func(ctx context.Context, token string) error
-	rotateFn       func(ctx context.Context, oldToken string, params repositories.SessionCreateParams) (*repositories.Session, error)
+	rotateFn        func(ctx context.Context, oldToken string, params repositories.SessionCreateParams) (*repositories.Session, error)
 }
 
 func (s stubSessionStore) Create(ctx context.Context, params repositories.SessionCreateParams) (*repositories.Session, error) {
@@ -63,6 +63,7 @@ func TestAuthServiceRegisterValidatesInput(t *testing.T) {
 	service := NewAuthService(
 		stubUserStore{},
 		stubSessionStore{},
+		nil,
 		NewTokenService("secret", time.Hour),
 		time.Hour,
 		24*time.Hour,
@@ -105,6 +106,7 @@ func TestAuthServiceLoginRejectsBadPassword(t *testing.T) {
 				return &repositories.Session{ID: "session-1", UserID: params.UserID, Token: params.Token}, nil
 			},
 		},
+		nil,
 		NewTokenService("secret", time.Hour),
 		time.Hour,
 		24*time.Hour,
@@ -148,6 +150,7 @@ func TestAuthServiceRefreshRotatesRefreshToken(t *testing.T) {
 				return &repositories.Session{ID: "session-2", UserID: params.UserID, Token: params.Token}, nil
 			},
 		},
+		nil,
 		NewTokenService("secret", time.Hour),
 		time.Hour,
 		24*time.Hour,
