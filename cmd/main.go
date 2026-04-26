@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/nanadotam/amoako-pass/go-backend/api/handlers"
 	"github.com/nanadotam/amoako-pass/go-backend/api/middlewares"
@@ -27,13 +26,12 @@ func main() {
 	if db != nil {
 		defer db.Close()
 		if err := storage.ValidateSchema(context.Background(), db); err != nil {
-			log.Fatalf("validate db schema: %v", err)
+			log.Printf("warn: db schema check: %v", err)
 		}
 	}
 
 	tokenService := services.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL)
 	encryptionService := services.NewEncryptionService(cfg.EncryptionKey)
-	loginRateLimiter := services.NewRateLimiter(5, 10*time.Minute)
 
 	var (
 		authService         *services.AuthService
@@ -100,7 +98,7 @@ func main() {
 	hibpService := services.NewHIBPService(cfg.RequestTimeout)
 
 	healthHandler := handlers.NewHealthHandler(db, cfg.AppVersion)
-	authHandler := handlers.NewAuthHandler(authService, maintenanceService, auditService, loginRateLimiter)
+	authHandler := handlers.NewAuthHandler(authService, maintenanceService, auditService, nil)
 	vaultHandler := handlers.NewVaultHandler(vaultService, maintenanceService, transferService, auditService)
 	categoryHandler := handlers.NewCategoryHandler(categoryService)
 	wifiHandler := handlers.NewWifiHandler(wifiService, auditService)

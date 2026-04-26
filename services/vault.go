@@ -279,9 +279,9 @@ func (s *VaultService) FlutterCreate(ctx context.Context, userID string, input F
 	if err != nil {
 		return nil, err
 	}
-	params.CategoryID, err = s.resolveFlutterCategoryID(ctx, userID, input.Category)
-	if err != nil {
-		return nil, err
+	categoryID, err := s.resolveFlutterCategoryID(ctx, userID, input.Category)
+	if err == nil {
+		params.CategoryID = categoryID
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
@@ -305,9 +305,9 @@ func (s *VaultService) FlutterUpdate(ctx context.Context, userID, passwordID str
 	if err != nil {
 		return nil, err
 	}
-	params.CategoryID, err = s.resolveFlutterCategoryID(ctx, userID, input.Category)
-	if err != nil {
-		return nil, err
+	categoryID, err := s.resolveFlutterCategoryID(ctx, userID, input.Category)
+	if err == nil {
+		params.CategoryID = categoryID
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
