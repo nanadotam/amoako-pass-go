@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -25,6 +26,9 @@ func main() {
 	}
 	if db != nil {
 		defer db.Close()
+		if err := storage.ValidateSchema(context.Background(), db); err != nil {
+			log.Fatalf("validate db schema: %v", err)
+		}
 	}
 
 	tokenService := services.NewTokenService(cfg.JWTSecret, cfg.AccessTokenTTL)
