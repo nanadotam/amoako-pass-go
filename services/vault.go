@@ -244,9 +244,9 @@ func (s *VaultService) FlutterList(ctx context.Context, userID string) ([]Flutte
 	if err != nil {
 		return nil, err
 	}
-	categoryNames, err := s.categoryNamesByID(ctx, userID)
-	if err != nil {
-		return nil, err
+	categoryNames, _ := s.categoryNamesByID(ctx, userID)
+	if categoryNames == nil {
+		categoryNames = map[string]string{}
 	}
 
 	items := make([]FlutterPasswordListItem, 0, len(records))
@@ -265,9 +265,9 @@ func (s *VaultService) FlutterGet(ctx context.Context, userID, passwordID string
 	if err != nil {
 		return nil, err
 	}
-	categoryNames, err := s.categoryNamesByID(ctx, userID)
-	if err != nil {
-		return nil, err
+	categoryNames, _ := s.categoryNamesByID(ctx, userID)
+	if categoryNames == nil {
+		categoryNames = map[string]string{}
 	}
 
 	item := toFlutterPasswordDetail(*record, categoryNames)
@@ -291,9 +291,9 @@ func (s *VaultService) FlutterCreate(ctx context.Context, userID string, input F
 	if err != nil {
 		return nil, err
 	}
-	categoryNames, err := s.categoryNamesByID(ctx, userID)
-	if err != nil {
-		return nil, err
+	categoryNames, _ := s.categoryNamesByID(ctx, userID)
+	if categoryNames == nil {
+		categoryNames = map[string]string{}
 	}
 
 	item := toFlutterPasswordDetail(*record, categoryNames)
@@ -317,9 +317,9 @@ func (s *VaultService) FlutterUpdate(ctx context.Context, userID, passwordID str
 	if err != nil {
 		return nil, err
 	}
-	categoryNames, err := s.categoryNamesByID(ctx, userID)
-	if err != nil {
-		return nil, err
+	categoryNames, _ := s.categoryNamesByID(ctx, userID)
+	if categoryNames == nil {
+		categoryNames = map[string]string{}
 	}
 
 	item := toFlutterPasswordDetail(*record, categoryNames)
