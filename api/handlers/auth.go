@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -45,7 +46,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, http.StatusConflict, "email or username already exists")
 		default:
 			log.Printf("auth register failed: email=%q username=%q err=%v", input.Email, input.Username, err)
-			respond.Error(w, http.StatusInternalServerError, "registration failed")
+			respond.Error(w, http.StatusInternalServerError, fmt.Sprintf("registration failed: %v", err))
 		}
 		return
 	}
