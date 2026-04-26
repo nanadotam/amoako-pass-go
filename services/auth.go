@@ -121,13 +121,15 @@ func (s *AuthService) Register(ctx context.Context, input RegisterInput, meta Au
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
-	defer cancel()
-
+	// Hash before applying the DB timeout — bcrypt is CPU-bound and can be
+	// slow on shared hosting; it must not consume the request deadline.
 	hash, err := HashPassword(input.Password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
+	defer cancel()
 
 	username := strings.TrimSpace(input.Username)
 	if username == "" {
@@ -150,10 +152,10 @@ func (s *AuthService) Login(ctx context.Context, input LoginInput, meta AuthMeta
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, s.requestTimeout)
-	defer cancel()
-
-	user, err := s.users.FindByEmail(ctx, normalizeEmail(input.Email))
+	// Phase 1: fetch user hash (bounded by timeout)
+	findCtx, findCancel := context.WithTimeout(ctx, s.requestTimeout)
+	user, err := s.users.FindByEmail(findCtx, normalizeEmail(input.Email))
+	findCancel()
 	if err != nil {
 		if errors.Is(err, repositories.ErrUserNotFound) {
 			return nil, ErrInvalidCredentials
@@ -161,19 +163,25 @@ func (s *AuthService) Login(ctx context.Context, input LoginInput, meta AuthMeta
 		return nil, err
 	}
 
+	// CheckPasswordHash is CPU-bound (bcrypt) — must run outside the timeout
+	// so slow shared-CPU environments don't cancel the subsequent DB writes.
 	if !CheckPasswordHash(input.Password, user.PasswordHash) {
 		return nil, ErrInvalidCredentials
 	}
 
-	if err := s.users.UpdateLastLogin(ctx, user.ID); err != nil {
+	// Phase 2: fresh timeout for remaining DB operations after bcrypt
+	writeCtx, writeCancel := context.WithTimeout(ctx, s.requestTimeout)
+	defer writeCancel()
+
+	if err := s.users.UpdateLastLogin(writeCtx, user.ID); err != nil {
 		return nil, err
 	}
 
 	if s.loginHistory != nil {
-		_ = s.recordLoginHistory(ctx, user.ID, input, meta)
+		_ = s.recordLoginHistory(writeCtx, user.ID, input, meta)
 	}
 
-	return s.issueTokens(ctx, user, meta)
+	return s.issueTokens(writeCtx, user, meta)
 }
 
 func (s *AuthService) Refresh(ctx context.Context, input RefreshInput, meta AuthMeta) (*RefreshResult, error) {
